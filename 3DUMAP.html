@@ -1,0 +1,867 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Multiplexed IF Lung UMAP Visualization and Mapping</title>
+    <style>
+        body { margin: 0; padding: 0; background-color: #000000; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; color: #f8fafc; overflow-x: hidden;}
+
+        #loading-screen {
+            position: fixed; top: 0; left: 0; width: 100vw; height: 100vh;
+            background-color: #080f1e; z-index: 9999;
+            display: flex; flex-direction: column; align-items: center; justify-content: center;
+            color: #3b82f6; font-size: 1.5rem; font-weight: bold; text-align: center;
+            transition: opacity 0.8s ease; padding: 20px; box-sizing: border-box;
+        }
+        .spinner {
+            width: 50px; height: 50px; border: 5px solid rgba(59, 130, 246, 0.3);
+            border-top-color: #3b82f6; border-radius: 50%;
+            animation: spin 1s linear infinite; margin-bottom: 20px;
+        }
+        @keyframes spin { 100% { transform: rotate(360deg); } }
+
+        #scroll-space { height: 400vh; pointer-events: none; }
+        #fixed-wrapper { position: fixed; top: 0; left: 0; width: 100vw; height: 100vh; overflow: hidden; pointer-events: none; }
+
+        #map-container {
+            position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 1;
+            display: flex; align-items: center; justify-content: center;
+            opacity: 0.15; pointer-events: none;
+        }
+
+        /* NEW: Canvas overlay for the 100k dots */
+        #map-canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 2; pointer-events: none; }
+
+        #canvas-container { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 3; }
+        canvas { display: block; width: 100%; height: 100%; }
+
+        #svg-overlay { position: absolute; top: 0; left: 0; width: 100vw; height: 100vh; z-index: 4; pointer-events: none; }
+        #connection-curve { fill: none; stroke-width: 2.5; stroke-dasharray: 6 6; animation: dash 1s linear infinite; }
+        @keyframes dash { to { stroke-dashoffset: -12; } }
+
+        #axes-legend {
+            position: absolute; top: 20px; left: 20px;
+            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px);
+            padding: 20px; border-radius: 12px; border: 1px solid rgba(51, 65, 85, 0.8);
+            font-size: 0.9rem; z-index: 5; box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+        }
+        .legend-item { margin-bottom: 8px; } .legend-item span { font-weight: bold; }
+        .axis-x { color: #ef4444; } .axis-y { color: #22c55e; } .axis-z { color: #3b82f6; }
+
+        #toggle-btn {
+            position: absolute; bottom: 130px; left: 50%; transform: translateX(-50%); z-index: 5;
+            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px);
+            color: #f8fafc; border: 1px solid rgba(51, 65, 85, 0.8);
+            padding: 10px 20px; border-radius: 8px; cursor: pointer;
+            font-size: 1rem; transition: background 0.2s;
+            display: none;
+            pointer-events: auto;
+        }
+        #toggle-btn:hover { background: rgba(30, 41, 59, 1); }
+
+        #scroll-prompt {
+            position: absolute; bottom: 40px; left: 50%; transform: translateX(-50%); z-index: 5;
+            background: rgba(15, 23, 42, 0.9); padding: 10px 20px; border-radius: 20px; border: 1px solid #3b82f6;
+            font-weight: bold; animation: bounce 2s infinite; pointer-events: auto; cursor: pointer;
+            transition: background-color 0.3s, transform 0.2s, opacity 0.4s ease, visibility 0.4s ease;
+        }
+        #scroll-prompt:hover { background: rgba(30, 41, 59, 1); transform: translateX(-50%) scale(1.05); }
+        #scroll-prompt.fade-out {
+            opacity: 0;
+            visibility: hidden;
+            pointer-events: none;
+        }
+        @keyframes bounce { 0%, 20%, 50%, 80%, 100% { transform: translateY(0) translateX(-50%); } 40% { transform: translateY(-10px) translateX(-50%); } 60% { transform: translateY(-5px) translateX(-50%); } }
+
+        #color-sidebar {
+            position: absolute; bottom: 20px; left: 50%; transform: translateX(-50%); z-index: 5;
+            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px);
+            border: 1px solid rgba(51, 65, 85, 0.8); border-radius: 12px;
+            padding: 15px; width: 220px; 
+            display: none; flex-direction: column; box-sizing: border-box;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            pointer-events: auto;
+        }
+        #color-sidebar h3 { margin: 0 0 10px 0; font-size: 1.1rem; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        .palette-buttons { display: flex; gap: 5px; }
+        .palette-buttons button { flex: 1; background: #334155; color: white; border: none; padding: 8px 0; border-radius: 4px; cursor: pointer; font-size: 0.8rem; transition: background 0.2s; }
+        .palette-buttons button:hover { background: #475569; }
+
+        #top-left-ui {
+            position: absolute; top: 20px; left: 20px; z-index: 10;
+            display: flex; flex-direction: column; gap: 15px;
+            width: 320px; max-width: calc(100vw - 40px); pointer-events: none;
+        }
+
+        #story-panel {
+            background: rgba(15, 23, 42, 0.85); backdrop-filter: blur(8px);
+            border: 1px solid rgba(51, 65, 85, 0.8); border-radius: 12px;
+            padding: 20px; width: 100%; box-sizing: border-box;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.5); pointer-events: none;
+        }
+        #story-panel h2 { margin: 0 0 10px 0; font-size: 1.4rem; color: #3b82f6; border-bottom: 1px solid #334155; padding-bottom: 8px; }
+        #story-panel p { margin: 0; font-size: 0.95rem; color: #cbd5e1; line-height: 1.5; }
+        #story-panel a { pointer-events: auto; color: #3b82f6; text-decoration: none; font-weight: bold; }
+        #story-panel a:hover { text-decoration: underline; }
+
+        #nav-bar {
+            display: flex; gap: 12px; justify-content: center; align-self: flex-start;
+            background: rgba(15, 23, 42, 0.85); padding: 12px 24px; border-radius: 30px; backdrop-filter: blur(8px);
+            border: 1px solid rgba(51, 65, 85, 0.8); box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+            pointer-events: auto;
+        }
+        .nav-dot {
+            width: 14px; height: 14px; border-radius: 50%; border: 2px solid #3b82f6; background: transparent; cursor: pointer; transition: all 0.2s ease; padding: 0; outline: none;
+        }
+        .nav-dot.active, .nav-dot:hover {
+            background: #3b82f6; transform: scale(1.3); box-shadow: 0 0 10px #3b82f6;
+        }
+        .nav-arrow {
+        background: transparent; color: #cbd5e1; border: none; font-size: 1.2rem; cursor: pointer; padding: 0 8px; outline: none; transition: color 0.2s; font-weight: bold;
+        }
+        .nav-arrow:hover { color: #3b82f6; }
+        .nav-arrow:disabled { color: #334155; cursor: not-allowed; }
+
+    </style>
+    
+    <script async src="https://unpkg.com/es-module-shims@1.8.0/dist/es-module-shims.js"></script>
+    <script src="https://d3js.org/d3.v7.min.js"></script>
+    <script type="importmap">
+        {
+            "imports": {
+                "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+                "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/",
+                "apache-arrow": "https://cdn.jsdelivr.net/npm/apache-arrow@16.0.0/+esm"
+            }
+        }
+    </script>
+</head>
+<body>
+
+    <script>
+        window.onerror = function(msg) {
+            const loadingText = document.getElementById('loading-text');
+            if (loadingText) {
+                loadingText.innerHTML = `<span style="color: #ef4444;">Error Found!</span><br><br><span style="font-size: 1rem; color: #94a3b8; font-weight: normal;">${msg}</span>`;
+                document.querySelector('.spinner').style.display = 'none';
+            }
+        };
+    </script>
+
+    <div id="loading-screen">
+        <div class="spinner"></div>
+        <div id="loading-text">Loading Data... <br><span style="font-size:0.8rem; font-weight:normal;">(This may take a few seconds)</span></div>
+    </div>
+
+    <div id="scroll-space"></div>
+
+    <div id="fixed-wrapper">
+        <div id="map-container">
+            <img id="map-image" alt="Background map" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%; object-fit: contain; z-index: 1;">
+            <canvas id="map-canvas"></canvas>
+        </div>
+        <div id="canvas-container"></div>
+        <svg id="svg-overlay">
+            <path id="connection-curve" d=""></path>
+            <circle id="highlight-dot" r="0" fill="none" stroke="#fff" stroke-width="2"></circle>
+        </svg>
+
+        <div id="top-left-ui">
+            <div id="story-panel">
+                <h2 id="story-title">Phase</h2>
+                <p id="story-desc">Description goes here...</p>
+            </div>
+            <div id="nav-bar"></div>
+        </div>
+
+        <div id="scroll-prompt">↓ Scroll down to start exploration ↓</div>
+
+        <button id="toggle-btn">Toggle Spheres</button>
+
+        <div id="color-sidebar">
+            <h3>Color Palette</h3>
+            <div class="palette-buttons">
+                <button id="btn-standard">Standard</button>
+                <button id="btn-glasbey">Glasbey</button>
+                <button id="btn-distinct">Distinct</button>
+            </div>
+        </div>
+    </div>
+
+    <script type="module">
+        import * as THREE from 'three';
+        import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+        import { tableFromIPC } from 'apache-arrow';
+
+        // Glasbey-inspired bright categorical palette optimized for distinct clusters on dark backgrounds
+        const glasbeyColors = [
+            "#d33f6a", "#11c638", "#8dd593", "#c6dec7", "#ead3c6", "#f0b98d",
+            "#ef9708", "#0fcfc0", "#9cded6", "#d5eae7", "#f3e1eb", "#f6c4e1",
+            "#f79cd4", "#7f3c8d", "#11a579", "#3969ac", "#f2b701", "#e73f74",
+            "#80ba5a", "#e68310", "#008695", "#cf1c90", "#f97b72", "#4b4b8f",
+            "#a5aa99", "#ed645a", "#ce6693", "#a059a0", "#e7aed1", "#8798e4"
+        ];
+        const colorScale = d3.scaleOrdinal(glasbeyColors);
+        const palettes = {
+            standard: ["#4e79a7", "#f28e2c", "#e15759", "#76b7b2", "#59a14f", "#edc949", "#af7aa1", "#ff9da7", "#9c755f", "#bab0ab"],
+            glasbey: [
+                "#d33f6a", "#11c638", "#8dd593", "#c6dec7", "#ead3c6", "#f0b98d",
+                "#ef9708", "#0fcfc0", "#9cded6", "#d5eae7", "#f3e1eb", "#f6c4e1",
+                "#f79cd4", "#7f3c8d", "#11a579", "#3969ac", "#f2b701", "#e73f74",
+                "#80ba5a", "#e68310", "#008695", "#cf1c90", "#f97b72", "#4b4b8f",
+                "#a5aa99", "#ed645a", "#ce6693", "#a059a0", "#e7aed1", "#8798e4"
+            ],
+            distinct: [
+                "#ff0000", "#00ff00", "#0000ff", "#ffff00", "#ff00ff", "#00ffff", 
+                "#ffa500", "#8a2be2", "#7fff00", "#dc143c", "#00bfff", "#ff8c00", 
+                "#ff1493", "#32cd32", "#8b008b", "#00fa9a", "#ff4500", "#da70d6", 
+                "#4169e1", "#f4a460", "#2e8b57", "#4682b4", "#d2b48c", "#008080", "#9acd32"
+            ]
+        };
+        const leidenColors = {};
+
+        // GLOBAL STATES
+        let dataPoints = [];
+        let scrollProgress = 0, hoveredIndex = -1;
+        const finalCameraPos = new THREE.Vector3(0, 0, 110), finalCameraTarget = new THREE.Vector3(0, 0, 0);
+        const savedCameraPos = new THREE.Vector3(), savedCameraTarget = new THREE.Vector3();
+        
+        const storyData = [
+            { title: "Lung Multiplexed IF", desc: "Immunofluorescence image of a human lung tissue. <a href='https://doi.org/10.35079/HBM274.QXJB.759' target='_blank'>Data from Hubmap HBM274.QXJB.759</a>." },
+            { title: "Cell Segmentation", desc: "Segmentation of individual cells (~470k, ~47k on mobile) shown here as white spheres." },
+            { title: "3D PCA Space", desc: "The cells are now globally separated by data variance - this is the linear principal component space." },
+            { title: "3D UMAP Space", desc: "Cells are clustered and colored by molecular similarity. The distinct colors highlight the different functional clusters or cell types." },
+            { title: "Contextualized Map", desc: "Folding the clustered and colored cells back. We can now observe how functional cell types are organized physically within the tissue." }
+        ];
+        const storyTargets = [0.0, 0.101, 0.201, 0.699, 1.0];
+        let currentPhase = -1;
+
+        // Setup Navigation Bar
+        const navBar = document.getElementById('nav-bar');
+        
+        function goToPhase(i) {
+            const maxScroll = document.body.scrollHeight - window.innerHeight;
+            const rawP = storyTargets[i] === 0 ? 0 : storyTargets[i] * (1 - 0.05) + 0.05; // Factor in the 5% deadzone
+            window.scrollTo({ top: rawP * maxScroll, behavior: 'smooth' });
+        }
+
+        const leftArrow = document.createElement('button');
+        leftArrow.className = 'nav-arrow'; leftArrow.innerHTML = '&#10094;';
+        leftArrow.addEventListener('click', () => { if (currentPhase > 0) goToPhase(currentPhase - 1); });
+        navBar.appendChild(leftArrow);
+
+        storyData.forEach((sd, i) => {
+            const dot = document.createElement('button');
+            dot.className = 'nav-dot'; dot.title = sd.title;
+            dot.addEventListener('click', () => goToPhase(i));
+            navBar.appendChild(dot);
+        });
+
+        const rightArrow = document.createElement('button');
+        rightArrow.className = 'nav-arrow'; rightArrow.innerHTML = '&#10095;';
+        rightArrow.addEventListener('click', () => { if (currentPhase < storyTargets.length - 1) goToPhase(currentPhase + 1); });
+        navBar.appendChild(rightArrow);
+
+        function updateNavDots(activeIndex) {
+            document.querySelectorAll('.nav-dot').forEach((dot, i) => {
+                if (i === activeIndex) dot.classList.add('active');
+                else dot.classList.remove('active');
+            });
+            leftArrow.disabled = activeIndex === 0;
+            rightArrow.disabled = activeIndex === storyTargets.length - 1;
+        }
+
+        // INSTANCED MESH ARRAYS (For High Performance)
+        let instancedMesh;
+        let positions3D, positionsPCA, positionsMap, baseScales, currentScales, targetColors;
+
+        window.addEventListener('scroll', () => {
+            const maxScroll = document.body.scrollHeight - window.innerHeight;
+            const rawProgress = Math.max(0, Math.min(1, window.scrollY / maxScroll));
+            
+            // 5% deadzone at the top. This ensures micro-scrolls don't lock your rotation!
+            const topThreshold = 0.05;
+            scrollProgress = rawProgress > topThreshold ? (rawProgress - topThreshold) / (1 - topThreshold) : 0;
+
+            const scrollBtn = document.getElementById('scroll-prompt');
+            if (scrollBtn) {
+                if (window.scrollY > 10) scrollBtn.classList.add('fade-out');
+                else scrollBtn.classList.remove('fade-out');
+            }
+        });
+
+        document.getElementById('toggle-btn').addEventListener('click', () => {
+            if (instancedMesh) {
+                instancedMesh.visible = !instancedMesh.visible;
+                document.getElementById('map-canvas').style.display = instancedMesh.visible ? '' : 'none';
+                document.getElementById('svg-overlay').style.display = instancedMesh.visible ? '' : 'none';
+            }
+        });
+
+        document.getElementById('scroll-prompt').addEventListener('click', () => { window.scrollTo({ top: document.body.scrollHeight, behavior: 'smooth' }); });
+
+        // D3 & CANVAS 2D SETUP
+        const mapCanvas = document.getElementById('map-canvas');
+        const mapCtx = mapCanvas.getContext('2d');
+
+        function resizeCanvas() {
+            mapCanvas.width = window.innerWidth * window.devicePixelRatio;
+            mapCanvas.height = window.innerHeight * window.devicePixelRatio;
+            mapCtx.scale(window.devicePixelRatio, window.devicePixelRatio);
+        }
+        window.addEventListener('resize', resizeCanvas);
+        resizeCanvas();
+
+        // THREE.JS SCENE SETUP
+        const container = document.getElementById('canvas-container');
+        const scene = new THREE.Scene();
+        const camera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+        camera.position.set(30, 20, 40); camera.lookAt(0, 0, 0); 
+        const projectionCamera = new THREE.PerspectiveCamera(60, window.innerWidth / window.innerHeight, 0.1, 1000);
+
+        const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
+        renderer.setSize(window.innerWidth, window.innerHeight); renderer.setClearColor(0x000000, 0); 
+        container.appendChild(renderer.domElement);
+
+        const axesContainer = new THREE.Group(); scene.add(axesContainer);
+
+        function createAxisWithTicks(dir, color, length, tickSpacing, tickLength) {
+            const group = new THREE.Group();
+            group.add(new THREE.Line(new THREE.BufferGeometry().setFromPoints([new THREE.Vector3(0, 0, 0), dir.clone().multiplyScalar(length)]), new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.7 })));
+            const tickMat = new THREE.LineBasicMaterial({ color: color, transparent: true, opacity: 0.4 });
+            const tickPts = [];
+            let p1 = new THREE.Vector3(), p2 = new THREE.Vector3();
+            if (dir.x === 1) { p1.set(0,1,0); p2.set(0,0,1); } else if (dir.y === 1) { p1.set(1,0,0); p2.set(0,0,1); } else { p1.set(1,0,0); p2.set(0,1,0); }
+            for (let i = tickSpacing; i <= length; i += tickSpacing) {
+                const c = dir.clone().multiplyScalar(i);
+                tickPts.push(c.clone().add(p1.clone().multiplyScalar(-tickLength)), c.clone().add(p1.clone().multiplyScalar(tickLength)), c.clone().add(p2.clone().multiplyScalar(-tickLength)), c.clone().add(p2.clone().multiplyScalar(tickLength)));
+            }
+            group.add(new THREE.LineSegments(new THREE.BufferGeometry().setFromPoints(tickPts), tickMat));
+            return group;
+        }
+
+        scene.add(new THREE.AmbientLight(0xffffff, 0.7));
+        const directionalLight = new THREE.DirectionalLight(0xffffff, 0.8); directionalLight.position.set(20, 50, 20); scene.add(directionalLight);
+
+        // Determine which image resolution to load based on screen size to save memory/bandwidth
+        const mapImg = document.getElementById('map-image');
+        const maxScreenDim = Math.max(window.innerWidth, window.innerHeight) * (window.devicePixelRatio || 1);
+        let imgScale = 1.0;
+        
+        if (maxScreenDim <= 3000) { // Standard 1080p monitors and laptops
+            mapImg.src = 'lung_0.25.jpg';
+            imgScale = 0.25;
+        } else if (maxScreenDim <= 6000) { // Standard 4K monitors
+            mapImg.src = 'lung_0.5.jpg';
+            imgScale = 0.5;
+        } else { // 8K or extremely high DPI displays
+            mapImg.src = 'lung.jpg';
+            imgScale = 1.0;
+        }
+        mapImg.setAttribute('data-scale', imgScale);
+
+        // FETCH BOTH FILES
+        Promise.all([
+            fetch('lung.arrow').then(async res => { 
+                if (!res.ok) throw new Error("Could not load lung.arrow"); 
+                const buffer = await res.arrayBuffer();
+                const table = tableFromIPC(buffer);
+                const count = table.numRows;
+                
+                const cols = {};
+                table.schema.fields.forEach(f => { cols[f.name] = table.getChild(f.name).toArray(); });
+                
+                const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
+                const step = isMobile ? 10 : 1;
+                const data = [];
+                
+                for(let i = 0; i < count; i += step) {
+                    const row = {};
+                    for(const key in cols) row[key] = cols[key][i];
+                    data.push(row);
+                }
+                return data;
+            }),
+            new Promise(resolve => {
+                const img = document.getElementById('map-image');
+                if (img.complete && img.naturalWidth > 0) resolve(img);
+                else { img.onload = () => resolve(img); img.onerror = () => resolve(img); }
+            })
+        ]).then(([arrowData, imgElement]) => {
+            dataPoints = arrowData;
+            const count = dataPoints.length;
+            
+            const loadedScale = parseFloat(imgElement.getAttribute('data-scale')) || 1.0;
+            const imgNatWidth = imgElement.naturalWidth || 1;
+            const imgNatHeight = imgElement.naturalHeight || 1;
+
+            let sumUmap1 = 0, sumUmap2 = 0, sumUmap3 = 0;
+            let sumPca1 = 0, sumPca2 = 0, sumPca3 = 0;
+            const uniqueClusters = new Set();
+
+            dataPoints.forEach(d => {
+                d.umap1 = parseFloat(d.UMAP_1 || d.umap_1 || d.umap1 || 0);
+                d.umap2 = parseFloat(d.UMAP_2 || d.umap_2 || d.umap2 || 0);
+                d.umap3 = parseFloat(d.UMAP_3 || d.umap_3 || d.umap3 || 0);
+                
+                d.pca1 = parseFloat(d.PCA_1 || d.pca_1 || d.pca1 || d.PC_1 || d.pc_1 || d.PC1 || d.pc1 || 0);
+                d.pca2 = parseFloat(d.PCA_2 || d.pca_2 || d.pca2 || d.PC_2 || d.pc_2 || d.PC2 || d.pc2 || 0);
+                d.pca3 = parseFloat(d.PCA_3 || d.pca_3 || d.pca3 || d.PC_3 || d.pc_3 || d.PC3 || d.pc3 || 0);
+
+                sumUmap1 += d.umap1;
+                sumUmap2 += d.umap2;
+                sumUmap3 += d.umap3;
+                
+                sumPca1 += d.pca1;
+                sumPca2 += d.pca2;
+                sumPca3 += d.pca3;
+
+                // Adjust Centroid coordinates by the image downsample factor (e.g., 2 or 4)
+                const rawCx = parseFloat(d['Centroid X'] || d['centroid X'] || d['centroid_X'] || d.centroid_x || d.centroid_X || 0);
+                const rawCy = parseFloat(d['Centroid Y'] || d['centroid Y'] || d['centroid_Y'] || d.centroid_y || d.centroid_Y || 0);
+                d.cx = (rawCx * loadedScale) / imgNatWidth;
+                d.cy = (rawCy * loadedScale) / imgNatHeight;
+                
+                d.normCx = d.cx;
+                d.normCy = d.cy;
+
+                uniqueClusters.add(d.leiden);
+            });
+
+            const meanUmap1 = sumUmap1 / count;
+            const meanUmap2 = sumUmap2 / count;
+            const meanUmap3 = sumUmap3 / count;
+            
+            const meanPca1 = sumPca1 / count;
+            const meanPca2 = sumPca2 / count;
+            const meanPca3 = sumPca3 / count;
+
+            let maxUmapExt = 0;
+            let maxPcaExt = 0;
+
+            // Center UMAP coordinates and find max extent
+            dataPoints.forEach(d => {
+                d.umap1 -= meanUmap1;
+                d.umap2 -= meanUmap2;
+                d.umap3 -= meanUmap3;
+                
+                d.pca1 -= meanPca1;
+                d.pca2 -= meanPca2;
+                d.pca3 -= meanPca3;
+                
+                maxUmapExt = Math.max(maxUmapExt, Math.abs(d.umap1), Math.abs(d.umap2), Math.abs(d.umap3));
+                maxPcaExt = Math.max(maxPcaExt, Math.abs(d.pca1), Math.abs(d.pca2), Math.abs(d.pca3));
+            });
+            
+            // Scale PCA to roughly match UMAP volume so transitions are visually pleasing
+            const pcaScale = maxUmapExt / (maxPcaExt || 1);
+            dataPoints.forEach(d => {
+                d.pca1 *= pcaScale;
+                d.pca2 *= pcaScale;
+                d.pca3 *= pcaScale;
+            });
+
+            // Dynamically create axes based on data scale
+            const axisLen = Math.ceil(maxUmapExt / 5) * 5 || 20;
+            const tickSpacing = axisLen / 4;
+            
+            axesContainer.add(createAxisWithTicks(new THREE.Vector3(1,0,0), 0xef4444, axisLen, tickSpacing, axisLen * 0.025));
+            axesContainer.add(createAxisWithTicks(new THREE.Vector3(0,1,0), 0x22c55e, axisLen, tickSpacing, axisLen * 0.025));
+            axesContainer.add(createAxisWithTicks(new THREE.Vector3(0,0,1), 0x3b82f6, axisLen, tickSpacing, axisLen * 0.025));
+            const gridHelper = new THREE.GridHelper(axisLen * 2, 10, 0x334155, 0x1e293b); 
+            gridHelper.material.transparent = true; gridHelper.material.opacity = 0.2;
+            axesContainer.add(gridHelper);
+
+            // Sidebar UI logic
+            const sortedClusters = Array.from(uniqueClusters).sort((a,b) => String(a).localeCompare(String(b), undefined, {numeric: true}));
+            
+            sortedClusters.forEach((cluster, i) => {
+                leidenColors[cluster] = palettes.glasbey[i % palettes.glasbey.length];
+            });
+
+            ['standard', 'glasbey', 'distinct'].forEach(type => {
+                document.getElementById(`btn-${type}`).addEventListener('click', () => {
+                    sortedClusters.forEach((cluster, i) => {
+                        leidenColors[cluster] = palettes[type][i % palettes[type].length];
+                    });
+                    updateAllColors();
+                });
+            });
+
+            // Adjust initial camera position so it frames the data nicely
+            const initialCamPos = new THREE.Vector3(axisLen * 1.5, axisLen * 1.0, axisLen * 2.0);
+            camera.position.copy(initialCamPos);
+            camera.lookAt(0, 0, 0);
+            savedCameraPos.copy(initialCamPos);
+            savedCameraTarget.set(0, 0, 0);
+
+            // 2. Setup InstancedMesh Data Arrays
+            positions3D = new Float32Array(count * 3);
+            positionsPCA = new Float32Array(count * 3);
+            positionsMap = new Float32Array(count * 3);
+            baseScales = new Float32Array(count);
+            currentScales = new Float32Array(count);
+            targetColors = new Float32Array(count * 3);
+
+            // Create geometry & material for InstancedMesh
+            const geometry = new THREE.SphereGeometry(0.1, 8, 8); 
+            const material = new THREE.MeshStandardMaterial({ roughness: 0.3, metalness: 0.1 });
+            instancedMesh = new THREE.InstancedMesh(geometry, material, count);
+            scene.add(instancedMesh);
+
+            const matrix = new THREE.Matrix4();
+            const color = new THREE.Color();
+
+            // Populate base data
+            for (let i = 0; i < count; i++) {
+                const d = dataPoints[i];
+                
+                // Color setup
+                let cluster = d.leiden;
+                color.set(leidenColors[cluster]);
+                targetColors[i*3] = color.r;
+                targetColors[i*3+1] = color.g;
+                targetColors[i*3+2] = color.b;
+
+                color.set(0xffffff); // Start fully white
+                instancedMesh.setColorAt(i, color);
+
+                // Initial positioning (Abstract Plot)
+                positions3D[i*3]     = d.umap1;
+                positions3D[i*3 + 1] = d.umap2;
+                positions3D[i*3 + 2] = d.umap3;
+                
+                positionsPCA[i*3]     = d.pca1;
+                positionsPCA[i*3 + 1] = d.pca2;
+                positionsPCA[i*3 + 2] = d.pca3;
+
+                // Set Scale
+                baseScales[i] = 1;
+                currentScales[i] = baseScales[i];
+
+                matrix.makeTranslation(positions3D[i*3], positions3D[i*3+1], positions3D[i*3+2]);
+                matrix.scale(new THREE.Vector3(baseScales[i], baseScales[i], baseScales[i]));
+                instancedMesh.setMatrixAt(i, matrix);
+            }
+            instancedMesh.instanceMatrix.needsUpdate = true;
+            instancedMesh.instanceColor.needsUpdate = true;
+
+            // 3. Draw Canvas Map Dots & Calculate 3D landing targets
+            update2DMapAnd3DTargets();
+
+            document.getElementById('loading-screen').style.opacity = '0';
+            setTimeout(() => { document.getElementById('loading-screen').remove(); }, 800);
+        }).catch(err => {
+            console.error(err);
+            document.getElementById('loading-text').innerHTML = `<span style="color: #ef4444;">Fetch Error</span><br><br><span style="font-size: 1rem; color: #94a3b8; font-weight: normal;">${err.message}</span>`;
+            document.querySelector('.spinner').style.display = 'none';
+        });
+
+        function updateAllColors() {
+            if (!instancedMesh) return;
+            const color = new THREE.Color();
+            for (let i = 0; i < dataPoints.length; i++) {
+                color.set(leidenColors[dataPoints[i].leiden]);
+                targetColors[i*3] = color.r;
+                targetColors[i*3+1] = color.g;
+                targetColors[i*3+2] = color.b;
+            }
+            last_color_mix = -1; // Force a full array color update in animate loop
+            
+            // Fast redraw strictly for color (saves unprojecting cycles)
+            mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+            for (let i = 0; i < dataPoints.length; i++) {
+                const d = dataPoints[i];
+                mapCtx.beginPath(); mapCtx.arc(d.px, d.py, 1.5, 0, 2 * Math.PI);
+                mapCtx.fillStyle = leidenColors[d.leiden] || '#ffffff';
+                mapCtx.globalAlpha = 0.5; mapCtx.fill();
+            }
+        }
+
+        // SUPER FUNCTION: Draws 100k points to HTML5 Canvas instantly, and unprojects to 3D targets
+        function update2DMapAnd3DTargets() {
+            if(!instancedMesh) return;
+
+            mapCtx.clearRect(0, 0, mapCanvas.width, mapCanvas.height);
+            
+            const imgElement = document.getElementById('map-image');
+            const loadedScale = parseFloat(imgElement.getAttribute('data-scale')) || 1.0;
+            const canvasImgWidth = (imgElement.naturalWidth || 1000) / loadedScale;
+            const canvasImgHeight = (imgElement.naturalHeight || 1000) / loadedScale;
+
+            const imgRatio = canvasImgWidth / canvasImgHeight;
+            const canvasRatio = window.innerWidth / window.innerHeight;
+            
+            let scale, offsetX = 0, offsetY = 0;
+            if (canvasRatio > imgRatio) {
+                scale = window.innerHeight / canvasImgHeight;
+                offsetX = (window.innerWidth - canvasImgWidth * scale) / 2;
+            } else {
+                scale = window.innerWidth / canvasImgWidth;
+                offsetY = (window.innerHeight - canvasImgHeight * scale) / 2;
+            }
+
+            projectionCamera.aspect = window.innerWidth / window.innerHeight;
+            projectionCamera.position.copy(finalCameraPos); projectionCamera.lookAt(finalCameraTarget);
+            projectionCamera.updateProjectionMatrix(); projectionCamera.updateMatrixWorld();
+
+            const vec = new THREE.Vector3();
+            const displayedImgWidth = canvasImgWidth * scale;
+            const displayedImgHeight = canvasImgHeight * scale;
+
+            for (let i = 0; i < dataPoints.length; i++) {
+                const d = dataPoints[i];
+                
+                // 2D CANVAS DRAWING (Super fast)
+                const px = (d.normCx * displayedImgWidth) + offsetX;
+                const py = (d.normCy * displayedImgHeight) + offsetY;
+                d.px = px; d.py = py; // Save screen coords for hover Bezier
+
+                mapCtx.beginPath(); mapCtx.arc(px, py, 1.5, 0, 2 * Math.PI);
+                mapCtx.fillStyle = leidenColors[d.leiden] || '#ffffff';
+                mapCtx.globalAlpha = 0.5; mapCtx.fill();
+
+                // 3D TARGET CALCULATION
+                const ndcX = (px / window.innerWidth) * 2 - 1, ndcY = -(py / window.innerHeight) * 2 + 1;
+                vec.set(ndcX, ndcY, 0.5);
+                vec.unproject(projectionCamera); vec.sub(projectionCamera.position).normalize();
+                const distance = -projectionCamera.position.z / vec.z;
+                
+                const targetPos = new THREE.Vector3().copy(projectionCamera.position).add(vec.multiplyScalar(distance));
+                positionsMap[i*3] = targetPos.x; positionsMap[i*3+1] = targetPos.y; positionsMap[i*3+2] = targetPos.z;
+            }
+        }
+
+        const controls = new OrbitControls(camera, renderer.domElement); controls.enableDamping = true; controls.enableZoom = false; controls.enablePan = true; controls.autoRotate = true; controls.autoRotateSpeed = 1.0;
+        
+        // Require two fingers to rotate the 3D map on mobile, allowing 1-finger native page scrolling
+        controls.touches = {
+            ONE: null,
+            TWO: THREE.TOUCH.ROTATE
+        };
+        controls.domElement.style.touchAction = 'pan-y'; // Allow vertical scrolling on mobile
+
+        const raycaster = new THREE.Raycaster(); const mouse = new THREE.Vector2(-100, -100);
+
+        window.addEventListener('mousemove', (event) => { mouse.x = (event.clientX / window.innerWidth) * 2 - 1; mouse.y = -(event.clientY / window.innerHeight) * 2 + 1; });
+        window.addEventListener('resize', () => { camera.aspect = window.innerWidth / window.innerHeight; camera.updateProjectionMatrix(); renderer.setSize(window.innerWidth, window.innerHeight); update2DMapAnd3DTargets(); });
+
+        const svgPath = document.getElementById('connection-curve');
+        const highlightDot = document.getElementById('highlight-dot');
+        const dummy = new THREE.Object3D();
+        const _pos3D = new THREE.Vector3();
+        const _posPCA = new THREE.Vector3();
+        const _posMap = new THREE.Vector3();
+
+        function updateUI(index) {
+            const d = dataPoints[index];
+            const colorHex = leidenColors[d.leiden] || '#ffffff';
+            svgPath.style.stroke = colorHex;
+        }
+
+        function drawBezierAndHighlight(index) {
+            const d = dataPoints[index];
+            
+            // Highlight map dot
+            highlightDot.setAttribute('cx', d.px); highlightDot.setAttribute('cy', d.py);
+            highlightDot.setAttribute('r', '6'); highlightDot.setAttribute('fill', leidenColors[d.leiden] || '#ffffff');
+            
+            // Draw Curve
+            const matrix = new THREE.Matrix4(); instancedMesh.getMatrixAt(index, matrix);
+            const vector = new THREE.Vector3().setFromMatrixPosition(matrix).project(camera);
+            const startX = (vector.x * .5 + .5) * window.innerWidth, startY = (vector.y * -.5 + .5) * window.innerHeight;
+            
+            const arcOffset = 100 * (1 - scrollProgress);
+            const controlX1 = startX + (d.px - startX) * 0.3, controlY1 = startY - arcOffset, controlX2 = startX + (d.px - startX) * 0.7, controlY2 = d.py - arcOffset;
+            svgPath.setAttribute('d', `M ${startX} ${startY} C ${controlX1} ${controlY1}, ${controlX2} ${controlY2}, ${d.px} ${d.py}`);
+        }
+
+        // --- EXTREMELY HIGH PERFORMANCE ANIMATION LOOP ---
+        let last_map_weight = -1;
+        let last_pca_weight = -1;
+        let last_ease_scale = -1;
+        let last_color_mix = -1;
+        let was_allow_controls = false;
+
+        function animate() {
+            requestAnimationFrame(animate);
+            if (!instancedMesh) { renderer.render(scene, camera); return; }
+
+            let map_weight = 0, pca_weight = 0, umap_weight = 0, color_mix = 0, global_scale = 1, allow_controls = false, activePhase = 0;
+
+            if (scrollProgress < 0.1) { // Phase 0: Fade spheres onto 2D image
+                map_weight = 1; pca_weight = 0; umap_weight = 0;
+                color_mix = 0;
+                global_scale = scrollProgress / 0.1;
+                activePhase = 0;
+            } else if (scrollProgress < 0.2) { // Phase 1: 2D -> PCA
+                let t = (scrollProgress - 0.1) / 0.1;
+                let ease_t = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+                map_weight = 1 - ease_t; pca_weight = ease_t; umap_weight = 0;
+                color_mix = 0;
+                global_scale = 1;
+                activePhase = 1;
+            } else if (scrollProgress < 0.35) { // Phase 2: PCA Exploration
+                map_weight = 0; pca_weight = 1; umap_weight = 0;
+                color_mix = 0;
+                global_scale = 1;
+                allow_controls = true;
+                activePhase = 2;
+            } else if (scrollProgress < 0.45) { // Phase 3: PCA -> UMAP
+                let t = (scrollProgress - 0.35) / 0.1;
+                let ease_t = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+                map_weight = 0; pca_weight = 1 - ease_t; umap_weight = ease_t;
+                color_mix = 0;
+                global_scale = 1;
+                activePhase = 3;
+            } else if (scrollProgress < 0.7) { // Phase 4: 3D Exploration & Coloration
+                map_weight = 0; pca_weight = 0; umap_weight = 1;
+                color_mix = (scrollProgress - 0.45) / 0.25;
+                global_scale = 1;
+                allow_controls = true;
+                activePhase = 3;
+            } else if (scrollProgress < 0.85) { // Phase 5: Reproject back to 2D image
+                let t = (scrollProgress - 0.7) / 0.15;
+                let ease_t = t < 0.5 ? 2 * t * t : -1 + (4 - 2 * t) * t;
+                umap_weight = 1 - ease_t; map_weight = ease_t; pca_weight = 0;
+                color_mix = 1;
+                global_scale = 1;
+                activePhase = 4;
+            } else { // Phase 6: Complete
+                map_weight = 1; pca_weight = 0; umap_weight = 0;
+                color_mix = 1;
+                global_scale = 1;
+                activePhase = 4;
+            }
+
+            // Update Story Panel text
+            if (activePhase !== currentPhase) {
+                currentPhase = activePhase;
+                document.getElementById('story-title').innerText = storyData[activePhase].title;
+                document.getElementById('story-desc').innerHTML = storyData[activePhase].desc;
+                updateNavDots(activePhase);
+                
+                const colorSidebar = document.getElementById('color-sidebar');
+                if (activePhase >= 3) {
+                    colorSidebar.style.display = 'flex';
+                } else {
+                    colorSidebar.style.display = 'none';
+                }
+            
+                const toggleBtn = document.getElementById('toggle-btn');
+                if (activePhase === 4) {
+                    toggleBtn.style.display = 'block';
+                } else {
+                    toggleBtn.style.display = 'none';
+                    if (instancedMesh && !instancedMesh.visible) {
+                        instancedMesh.visible = true;
+                        document.getElementById('map-canvas').style.display = '';
+                        document.getElementById('svg-overlay').style.display = '';
+                    }
+                }
+            }
+
+            // Math formula to smoothly ramp transitions (Ease In / Ease Out)
+            const ease_color = color_mix < 0.5 ? 2 * color_mix * color_mix : -1 + (4 - 2 * color_mix) * color_mix;
+            const ease_scale = global_scale < 0.5 ? 2 * global_scale * global_scale : -1 + (4 - 2 * global_scale) * global_scale;
+
+            const isScrolling = Math.abs(map_weight - last_map_weight) > 0.0001 || Math.abs(pca_weight - last_pca_weight) > 0.0001 || Math.abs(ease_scale - last_ease_scale) > 0.0001;
+
+            if (allow_controls) { 
+                if (!was_allow_controls) {
+                    camera.position.copy(savedCameraPos);
+                    controls.target.copy(savedCameraTarget);
+                }
+                controls.enabled = true; 
+                controls.update(); 
+                savedCameraPos.copy(camera.position); 
+                savedCameraTarget.copy(controls.target); 
+                was_allow_controls = true;
+                container.style.pointerEvents = 'auto';
+            } else { 
+                controls.enabled = false; 
+                camera.position.lerpVectors(savedCameraPos, finalCameraPos, map_weight); 
+                controls.target.lerpVectors(savedCameraTarget, finalCameraTarget, map_weight); 
+                camera.lookAt(controls.target); 
+                was_allow_controls = false;
+                container.style.pointerEvents = 'none';
+            }
+
+            // Dynamically Fade Axis, Legends, and Map
+            axesContainer.traverse(child => { if (child.material) { if (child.userData.origOp === undefined) child.userData.origOp = child.material.opacity; child.material.opacity = child.userData.origOp * (1 - map_weight); } });
+            const axesLegend = document.getElementById('axes-legend');
+            if (axesLegend) axesLegend.style.opacity = 1 - map_weight;
+            
+            let mapOpacity = 0.15;
+            if (activePhase === 0 || activePhase === 1) {
+                mapOpacity = 0.15 + (map_weight * 0.85);
+            } else if (activePhase === 4 && !instancedMesh.visible) {
+                mapOpacity = 1.0;
+            }
+            
+            document.getElementById('map-container').style.opacity = mapOpacity.toString();
+            document.getElementById('map-canvas').style.opacity = (map_weight * ease_color).toString(); // Only show canvas map dots fully at the very end to prevent overlap artifacts
+
+            // Rapid color bleeding calculation
+            if (Math.abs(ease_color - last_color_mix) > 0.001) {
+                const colorsArray = instancedMesh.instanceColor.array;
+                for(let i=0; i<dataPoints.length; i++) {
+                    colorsArray[i*3]   = 1.0 + (targetColors[i*3] - 1.0) * ease_color;
+                    colorsArray[i*3+1] = 1.0 + (targetColors[i*3+1] - 1.0) * ease_color;
+                    colorsArray[i*3+2] = 1.0 + (targetColors[i*3+2] - 1.0) * ease_color;
+                }
+                instancedMesh.instanceColor.needsUpdate = true;
+                last_color_mix = ease_color;
+            }
+
+            // Raycaster Interaction
+            raycaster.setFromCamera(mouse, camera); 
+            const intersects = raycaster.intersectObject(instancedMesh);
+            
+            let hoveredIndexChanged = false;
+
+            if (intersects.length > 0) {
+                const index = intersects[0].instanceId;
+                if (hoveredIndex !== index) { hoveredIndex = index; updateUI(index); hoveredIndexChanged = true;}
+                drawBezierAndHighlight(index);
+                
+                // Set target scale for hover pulse
+                currentScales[index] = baseScales[index] * (1.5 + Math.sin(Date.now() * 0.005) * 0.2);
+            } else {
+                if (hoveredIndex !== -1) {
+                    currentScales[hoveredIndex] = baseScales[hoveredIndex]; // Reset scale
+                    hoveredIndex = -1; hoveredIndexChanged = true;
+                    svgPath.setAttribute('d', ''); highlightDot.setAttribute('r', '0');
+                }
+            }
+
+            // ONLY process the intense 100k matrix multiplication loop if things are actively moving!
+            if (isScrolling || hoveredIndexChanged || hoveredIndex !== -1) {
+                for(let i=0; i < dataPoints.length; i++) {
+                    _pos3D.set(positions3D[i*3], positions3D[i*3+1], positions3D[i*3+2]);
+                    _posPCA.set(positionsPCA[i*3], positionsPCA[i*3+1], positionsPCA[i*3+2]);
+                    _posMap.set(positionsMap[i*3], positionsMap[i*3+1], positionsMap[i*3+2]);
+                    
+                    dummy.position.set(
+                        _posMap.x * map_weight + _posPCA.x * pca_weight + _pos3D.x * umap_weight,
+                        _posMap.y * map_weight + _posPCA.y * pca_weight + _pos3D.y * umap_weight,
+                        _posMap.z * map_weight + _posPCA.z * pca_weight + _pos3D.z * umap_weight
+                    );
+                    
+                    dummy.scale.setScalar(currentScales[i] * ease_scale);
+                    dummy.updateMatrix();
+                    instancedMesh.setMatrixAt(i, dummy.matrix);
+                }
+                instancedMesh.instanceMatrix.needsUpdate = true;
+                last_map_weight = map_weight;
+                last_pca_weight = pca_weight;
+                last_ease_scale = ease_scale;
+            }
+
+            renderer.render(scene, camera);
+        }
+        animate();
+    </script>
+</body>
+</html>
