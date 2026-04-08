@@ -229,7 +229,7 @@
         
         const storyData = [
             { title: "Lung Multiplexed IF", desc: "Immunofluorescence image of a human lung tissue. <a href='https://doi.org/10.35079/HBM274.QXJB.759' target='_blank'>Data from Hubmap HBM274.QXJB.759</a>." },
-            { title: "Cell Segmentation", desc: "Segmentation of individual cells (~470k, ~47k on mobile) shown here as white spheres." },
+            { title: "Cell Segmentation", desc: "Segmentation of individual cells (~470k, ~25k on mobile) shown here as white spheres." },
             { title: "3D PCA Space", desc: "The cells are now globally separated by data variance - this is the linear principal component space." },
             { title: "3D UMAP Space", desc: "Cells are clustered and colored by molecular similarity. The distinct colors highlight the different functional clusters or cell types." },
             { title: "Contextualized Map", desc: "Folding the clustered and colored cells back. We can now observe how functional cell types are organized physically within the tissue." }
@@ -373,7 +373,7 @@
                 table.schema.fields.forEach(f => { cols[f.name] = table.getChild(f.name).toArray(); });
                 
                 const isMobile = /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) || window.innerWidth < 768;
-                const step = isMobile ? 10 : 1;
+                const step = isMobile ? 20 : 1;
                 const data = [];
                 
                 for(let i = 0; i < count; i += step) {
