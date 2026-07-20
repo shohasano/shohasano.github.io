@@ -1,0 +1,718 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Pixelgen Demo Dataset</title>
+<style>
+  :root { color-scheme: dark; }
+  html, body { margin: 0; height: 100%; overflow: hidden;
+    font-family: system-ui, -apple-system, Segoe UI, Roboto, sans-serif; }
+  #app { position: fixed; inset: 0; }
+  #panel {
+    position: fixed; top: 12px; left: 12px; width: 268px; max-height: calc(100% - 24px);
+    overflow-y: auto; background: rgba(20,24,32,0.92); color: #e6e9ef;
+    border: 1px solid #333b48; border-radius: 10px; padding: 12px 14px;
+    font-size: 13px; box-shadow: 0 6px 22px rgba(0,0,0,0.45); backdrop-filter: blur(4px);
+  }
+  #panel h1 { font-size: 14px; margin: 0 0 2px; }
+  #panel .sub { color: #9aa4b2; font-size: 11px; margin-bottom: 10px; }
+  .section { border-top: 1px solid #2a323e; padding-top: 10px; margin-top: 10px; }
+  .section:first-of-type { border-top: none; margin-top: 0; padding-top: 0; }
+  .row { display: flex; align-items: center; gap: 8px; margin: 6px 0; }
+  .row label { flex: 1; }
+  label.head { font-weight: 600; display: block; margin-bottom: 6px; }
+  input[type="range"] { width: 100%; }
+  input[type="search"] {
+    width: 100%; box-sizing: border-box; background: #0e1218; color: #e6e9ef;
+    border: 1px solid #333b48; border-radius: 6px; padding: 5px 8px; margin-bottom: 6px;
+  }
+  #markerList, #heatmapList { max-height: 168px; overflow-y: auto; border: 1px solid #2a323e;
+    border-radius: 6px; padding: 4px 6px; }
+  .mk { display: flex; align-items: center; gap: 7px; padding: 2px 4px; cursor: pointer; border-radius: 4px; }
+  .mk small { color: #8b95a3; margin-left: auto; }
+  .mk.disabled { opacity: 0.4; cursor: not-allowed; }
+  .mk.sel { background: #26405a; }
+  .swatch { width: 11px; height: 11px; border-radius: 2px; display: inline-block; flex: none; }
+  select { width: 100%; box-sizing: border-box; background: #0e1218; color: #e6e9ef;
+    border: 1px solid #333b48; border-radius: 6px; padding: 5px 8px; }
+  button { background: #263140; color: #e6e9ef; border: 1px solid #37455a;
+    border-radius: 6px; padding: 6px 10px; cursor: pointer; width: 100%; }
+  button:hover { background: #2f3d50; }
+  .val { color: #9aa4b2; min-width: 34px; text-align: right; }
+  #legend .mk small { color: #cbd3df; }
+  #hint { position: fixed; bottom: 10px; left: 12px; color: #6b7686; font-size: 11px; }
+  #colorbar { height: 10px; border-radius: 3px; margin-top: 6px;
+    background: linear-gradient(90deg,#ffffcc,#ffeda0,#fed976,#feb24c,#fd8d3c,#fc4e2a,#e31a1c,#b10026); }
+  .cbrow { display:flex; justify-content:space-between; color:#9aa4b2; font-size:11px; margin-top:2px; }
+  input[type="color"] { -webkit-appearance: none; appearance: none; width: 24px; height: 16px;
+    padding: 0; border: 1px solid #4a5567; border-radius: 3px; background: none; cursor: pointer; flex: none; }
+  input[type="color"]::-webkit-color-swatch-wrapper { padding: 0; }
+  input[type="color"]::-webkit-color-swatch { border: none; border-radius: 2px; }
+  input.swatch-color { width: 15px; height: 15px; }
+  .combo { position: relative; }
+  .combo-menu { position: absolute; left: 0; right: 0; top: 100%; z-index: 30; margin-top: 2px;
+    max-height: 210px; overflow-y: auto; background: #0e1218; border: 1px solid #333b48;
+    border-radius: 6px; box-shadow: 0 8px 20px rgba(0,0,0,0.55); display: none; }
+  .combo-menu.open { display: block; }
+  .combo-menu .mk { padding: 4px 8px; }
+  #legendBox { position: fixed; right: 12px; bottom: 12px; min-width: 140px;
+    background: rgba(20,24,32,0.92); color: #e6e9ef; border: 1px solid #333b48; border-radius: 10px;
+    padding: 10px 12px; font-size: 13px; box-shadow: 0 6px 22px rgba(0,0,0,0.45);
+    backdrop-filter: blur(4px); display: none; }
+  #legendBox .lhead { font-weight: 600; margin-bottom: 6px; font-size: 12px; }
+  #legendBox .mk { cursor: default; }
+  #loader { position: fixed; inset: 0; background: #12151b; z-index: 100; display: flex;
+    align-items: center; justify-content: center; }
+  .spinner { width: 50px; height: 50px; border: 5px solid #333b48; border-top-color: #e6e9ef;
+    border-radius: 50%; animation: spin 1s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #histogram { position: fixed; bottom: 12px; right: 12px; display: none;
+    display: flex; flex-direction: column-reverse; align-items: flex-end; }
+  .hist-box {
+    background: rgba(20,24,32,0.92); border: 1px solid #333b48; border-radius: 10px;
+    padding: 10px 12px; box-shadow: 0 6px 22px rgba(0,0,0,0.45); backdrop-filter: blur(4px);
+    width: 25vw; height: 150px; margin-top: 8px;
+  }
+  .hist-box .bar { fill: #7fd0ff; }
+  .hist-box .axis text { fill: #9aa4b2; font-size: 10px; }
+  .hist-box .axis path, .hist-box .axis line { stroke: #333b48; }
+  .hist-box .title { fill: #e6e9ef; font-size: 12px; text-anchor: middle; }
+</style>
+<script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
+<script src="https://d3js.org/d3.v7.min.js"></script>
+</head>
+<body>
+<div id="loader">
+  <div class="spinner"></div>
+</div>
+<div id="app"></div>
+<div id="panel">
+  <h1>PNA cell e7789d0ebcf186e9</h1>
+  <div class="sub" id="metaLine"></div>
+
+  <div class="section">
+    <label class="head">Marker glyphs <small style="color:#8b95a3">(pick up to 4)</small></label>
+    <input type="search" id="markerSearch" placeholder="Filter markers…" />
+    <div id="markerList"></div>
+    <div class="row" style="margin-top:6px"><label for="szGlyph">Glyph size</label>
+      <input type="range" id="szGlyph" min="0.5" max="4" step="0.1" />
+      <span class="val" id="szGlyphVal"></span></div>
+  </div>
+
+  <div class="section">
+    <div class="row"><label for="tglNodes">Show nodes</label>
+      <input type="checkbox" id="tglNodes" checked /></div>
+    <div class="row"><label for="opNodes">Opacity</label>
+      <input type="range" id="opNodes" min="0" max="1" step="0.02" />
+      <span class="val" id="opNodesVal"></span></div>
+    <div class="row"><label for="szNodes">Sphere size</label>
+      <input type="range" id="szNodes" min="0.2" max="2" step="0.05" />
+      <span class="val" id="szNodesVal"></span></div>
+    <div class="row"><label for="tglNodeDegree">Colour by connections</label>
+      <input type="checkbox" id="tglNodeDegree" /></div>
+    <div class="row"><label for="tglOnlySelected">Only selected markers</label>
+      <input type="checkbox" id="tglOnlySelected" /></div>
+  </div>
+
+  <div class="section">
+    <div class="row"><label for="tglMembrane">Show membrane</label>
+      <input type="checkbox" id="tglMembrane" checked /></div>
+    <div class="row"><label for="opMembrane">Opacity</label>
+      <input type="range" id="opMembrane" min="0" max="1" step="0.02" />
+      <span class="val" id="opMembraneVal"></span></div>
+    <div class="row"><label for="memColor">Colour</label>
+      <input type="color" id="memColor" /></div>
+    <label class="head" style="margin-top:8px">Surface heatmap</label>
+    <div class="combo">
+      <input type="search" id="heatmapInput" placeholder="none" autocomplete="off" />
+      <div class="combo-menu" id="heatmapMenu"></div>
+    </div>
+    <div id="colorbar"></div>
+    <div class="cbrow"><span>0</span><span id="cbMax">max</span></div>
+  </div>
+
+  <div class="section">
+    <div class="row"><label for="tglEdges">Show network</label>
+      <input type="checkbox" id="tglEdges" checked /></div>
+    <div class="row"><label for="opEdges">Opacity</label>
+      <input type="range" id="opEdges" min="0" max="1" step="0.02" />
+      <span class="val" id="opEdgesVal"></span></div>
+    <label class="head" style="margin-top:8px">Line colour</label>
+    <select id="edgeColor">
+      <option value="uniform">uniform</option>
+      <option value="degree">by node connections (red→green)</option>
+      <option value="length">by edge length (short=green)</option>
+    </select>
+  </div>
+
+  <div class="section">
+    <div class="row"><label for="tglAutoRotate">Auto-rotate</label>
+      <input type="checkbox" id="tglAutoRotate" /></div>
+    <button id="resetView" style="margin-top:10px">Reset view</button>
+  </div>
+</div>
+<div id="hint">Drag to rotate · scroll to zoom · right-drag to pan</div>
+<div id="legendBox"><div class="lhead">Selected markers</div><div id="legend"></div></div>
+<div id="histogram"></div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://unpkg.com/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://unpkg.com/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+
+async function main() {
+  const response = await fetch('./data.gz');
+  const compressedData = await response.arrayBuffer();
+  const decompressedData = pako.inflate(compressedData, { to: 'string' });
+  const DATA = JSON.parse(decompressedData.substring(decompressedData.indexOf('{'), decompressedData.lastIndexOf('}') + 1));
+
+  const CFG = DATA.config;
+
+  
+// ---------- Scene ----------
+const app = document.getElementById('app');
+const scene = new THREE.Scene();
+scene.background = new THREE.Color('#12151b');
+
+const camera = new THREE.PerspectiveCamera(45, window.innerWidth/window.innerHeight, 0.01, 5000);
+const CAM0 = new THREE.Vector3(0, 0, 16);
+camera.position.copy(CAM0);
+
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+app.appendChild(renderer.domElement);
+
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.08;
+
+scene.add(new THREE.AmbientLight(0xffffff, 0.55));
+const hemi = new THREE.HemisphereLight(0xbfd4ff, 0x20242c, 0.6);
+scene.add(hemi);
+const dir = new THREE.DirectionalLight(0xffffff, 0.9);
+dir.position.set(1, 1, 1);
+camera.add(dir);
+scene.add(camera);
+
+// ---------- Data views ----------
+const nodePos = DATA.nodePositions;              // flat N*3
+const nodeMarker = DATA.nodeMarker;              // N
+const nodeFace = DATA.nodeFace;                  // N
+const nNodes = DATA.meta.nNodes;
+const markerNames = DATA.markerNames;
+const nFaces = DATA.nFaces;
+const edges = DATA.edges;                        // flat E*2
+const palette = CFG.shapePalette;
+
+// ---------- Membrane ----------
+const memGeo = new THREE.BufferGeometry();
+const memPos = new Float32Array(DATA.membranePositions);
+memGeo.setAttribute('position', new THREE.BufferAttribute(memPos, 3));
+memGeo.computeVertexNormals();
+const memColors = new Float32Array(memPos.length); // for heatmap
+memGeo.setAttribute('color', new THREE.BufferAttribute(memColors, 3));
+const memMat = new THREE.MeshStandardMaterial({
+  color: new THREE.Color(CFG.surfaceColor), transparent: true,
+  opacity: CFG.surfaceOpacity, side: THREE.DoubleSide,
+  roughness: 0.85, metalness: 0.0, depthWrite: false,
+});
+const membrane = new THREE.Mesh(memGeo, memMat);
+scene.add(membrane);
+
+// ---------- Node glyphs ----------
+const R = CFG.nodeRadius;
+function shapeGeometry(shape, scale) {
+  const r = R * (scale || 1);
+  switch (shape) {
+    case 'pyramid':     return new THREE.ConeGeometry(r*1.25, r*2.2, 4);
+    case 'octahedron':  return new THREE.OctahedronGeometry(r*1.35);
+    case 'cube':        return new THREE.BoxGeometry(r*1.7, r*1.7, r*1.7);
+    case 'tetrahedron': return new THREE.TetrahedronGeometry(r*1.5);
+    case 'torus':       return new THREE.TorusGeometry(r, r*0.4, 8, 16);
+    case 'star':        return starGeometry(r);
+    default:            return new THREE.SphereGeometry(r, 12, 12);
+  }
+}
+function starGeometry(r) {
+  const s = new THREE.Shape();
+  const spikes = 5, outer = r*1.5, inner = r*0.68;
+  for (let i = 0; i < spikes*2; i++) {
+    const rad = (i % 2 === 0) ? outer : inner;
+    const a = Math.PI/spikes * i - Math.PI/2;
+    const x = Math.cos(a)*rad, y = Math.sin(a)*rad;
+    if (i === 0) s.moveTo(x, y); else s.lineTo(x, y);
+  }
+  s.closePath();
+  const g = new THREE.ExtrudeGeometry(s, { depth: r*0.6, bevelEnabled: false });
+  g.center();
+  return g;
+}
+
+const greyMat = new THREE.MeshStandardMaterial({ color: 0x9aa2ad, roughness: 0.7, metalness: 0.05 });
+const nodeGroup = new THREE.Group();
+scene.add(nodeGroup);
+
+let selected = []; // list of marker indices (max 4), in selection order
+let nodeOpacity = 1.0;
+let nodeScale = 1.0;    // grey-sphere size multiplier
+let glyphScale = 2.0;   // selected-marker glyph size multiplier (pop-out)
+let onlySelected = false; // when true, hide non-selected (grey) nodes
+const colorOverride = {}; // markerIndex -> user-chosen hex colour for its glyph
+let colorByDegree = false;
+let edgeColorMode = 'uniform';
+const _m = new THREE.Matrix4();
+const _c = new THREE.Color();
+
+// Robust upper bound (95th percentile of positive values) for normalisation.
+function pct(values, p) {
+  const a = [];
+  for (let i = 0; i < values.length; i++) if (values[i] > 0) a.push(values[i]);
+  if (!a.length) return 1;
+  a.sort((x, y) => x - y);
+  return Math.max(1e-9, a[Math.floor(p * (a.length - 1))]);
+}
+// Red (low) -> yellow -> green (high) ramp.
+function rg(t) {
+  t = Math.max(0, Math.min(1, t));
+  const stops = [[214,39,40],[240,200,40],[44,160,44]];
+  const x = t * (stops.length - 1); const i = Math.floor(x), f = x - i;
+  const a = stops[i], b = stops[Math.min(i+1, stops.length-1)];
+  return [(a[0]+(b[0]-a[0])*f)/255, (a[1]+(b[1]-a[1])*f)/255, (a[2]+(b[2]-a[2])*f)/255];
+}
+// Node degree (number of incident edges) from the edge list.
+const degree = new Int32Array(nNodes);
+for (let e = 0; e < edges.length / 2; e++) { degree[edges[e*2]]++; degree[edges[e*2+1]]++; }
+const degreeNorm = pct(degree, 0.95);
+
+function rebuildNodes() {
+  // dispose old
+  while (nodeGroup.children.length) {
+    const c = nodeGroup.children.pop();
+    if (c.geometry) c.geometry.dispose();
+    if (c.material && c.material !== greyMat) c.material.dispose();
+  }
+  const selSet = new Map(selected.map((mi, slot) => [mi, slot]));
+
+  // grey (unselected) nodes
+  const greyIdx = [];
+  const slotIdx = selected.map(() => []);
+  for (let i = 0; i < nNodes; i++) {
+    const mi = nodeMarker[i];
+    if (selSet.has(mi)) slotIdx[selSet.get(mi)].push(i);
+    else greyIdx.push(i);
+  }
+  greyMat.color.set(colorByDegree ? 0xffffff : 0x9aa2ad);
+  if (!onlySelected) addInstanced(new THREE.SphereGeometry(R * nodeScale, 12, 12), greyMat, greyIdx);
+  selected.forEach((mi, slot) => {
+    const pal = palette[slot % palette.length];
+    const glyphColor = colorOverride[mi] || pal.color;
+    const mat = new THREE.MeshStandardMaterial({
+      color: colorByDegree ? 0xffffff : new THREE.Color(glyphColor), roughness: 0.5, metalness: 0.1,
+      transparent: nodeOpacity < 1, opacity: nodeOpacity, depthWrite: nodeOpacity >= 1 });
+    addInstanced(shapeGeometry(pal.shape, glyphScale), mat, slotIdx[slot]);
+  });
+}
+function applyNodeOpacity(v) {
+  nodeOpacity = v;
+  greyMat.transparent = v < 1; greyMat.opacity = v; greyMat.depthWrite = v >= 1; greyMat.needsUpdate = true;
+  nodeGroup.traverse((c) => {
+    if (c.material && c.material !== greyMat) {
+      c.material.transparent = v < 1; c.material.opacity = v; c.material.depthWrite = v >= 1; c.material.needsUpdate = true;
+    }
+  });
+}
+function addInstanced(geo, mat, idxs) {
+  if (idxs.length === 0) return;
+  const im = new THREE.InstancedMesh(geo, mat, idxs.length);
+  for (let k = 0; k < idxs.length; k++) {
+    const i = idxs[k];
+    _m.makeTranslation(nodePos[i*3], nodePos[i*3+1], nodePos[i*3+2]);
+    im.setMatrixAt(k, _m);
+  }
+  im.instanceMatrix.needsUpdate = true;
+  if (colorByDegree) {
+    for (let k = 0; k < idxs.length; k++) {
+      const c = rg(degree[idxs[k]] / degreeNorm);
+      _c.setRGB(c[0], c[1], c[2]); im.setColorAt(k, _c);
+    }
+    im.instanceColor.needsUpdate = true;
+  }
+  nodeGroup.add(im);
+}
+
+// ---------- Network (solid lines) ----------
+let lineSeg = null, edgeLen = null, edgeColorAttr = null;
+function buildEdges() {
+  const nE = edges.length / 2;
+  if (nE === 0) return;
+  const pos = new Float32Array(nE * 2 * 3);
+  edgeLen = new Float32Array(nE);
+  for (let e = 0; e < nE; e++) {
+    const a = edges[e*2], b = edges[e*2+1];
+    const ax = nodePos[a*3], ay = nodePos[a*3+1], az = nodePos[a*3+2];
+    const bx = nodePos[b*3], by = nodePos[b*3+1], bz = nodePos[b*3+2];
+    pos[e*6+0] = ax; pos[e*6+1] = ay; pos[e*6+2] = az;
+    pos[e*6+3] = bx; pos[e*6+4] = by; pos[e*6+5] = bz;
+    edgeLen[e] = Math.hypot(bx-ax, by-ay, bz-az);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+  const col = new Float32Array(nE * 2 * 3);
+  edgeColorAttr = new THREE.BufferAttribute(col, 3);
+  g.setAttribute('color', edgeColorAttr);
+  const mat = new THREE.LineBasicMaterial({ color: 0x7fd0ff, transparent: true, opacity: 0.35 });
+  lineSeg = new THREE.LineSegments(g, mat);
+  scene.add(lineSeg);
+  applyEdgeColor(edgeColorMode);
+}
+function applyEdgeColor(mode) {
+  edgeColorMode = mode;
+  if (!lineSeg) return;
+  const nE = edges.length / 2;
+  if (mode === 'uniform') {
+    lineSeg.material.vertexColors = false;
+    lineSeg.material.color.set(0x7fd0ff);
+    lineSeg.material.needsUpdate = true;
+    return;
+  }
+  const col = edgeColorAttr.array;
+  if (mode === 'degree') {
+    for (let e = 0; e < nE; e++) {
+      const a = edges[e*2], b = edges[e*2+1];
+      const ca = rg(degree[a] / degreeNorm), cb = rg(degree[b] / degreeNorm);
+      col[e*6+0]=ca[0]; col[e*6+1]=ca[1]; col[e*6+2]=ca[2];
+      col[e*6+3]=cb[0]; col[e*6+4]=cb[1]; col[e*6+5]=cb[2];
+    }
+  } else if (mode === 'length') {
+    const lnorm = pct(edgeLen, 0.95);
+    for (let e = 0; e < nE; e++) {
+      const t = 1 - Math.min(1, edgeLen[e] / lnorm); // short span -> green
+      const c = rg(t);
+      col[e*6+0]=c[0]; col[e*6+1]=c[1]; col[e*6+2]=c[2];
+      col[e*6+3]=c[0]; col[e*6+4]=c[1]; col[e*6+5]=c[2];
+    }
+  }
+  edgeColorAttr.needsUpdate = true;
+  lineSeg.material.vertexColors = true;
+  lineSeg.material.color.set(0xffffff);
+  lineSeg.material.needsUpdate = true;
+}
+
+// ---------- Histogram ----------
+const histEl = document.getElementById('histogram');
+function drawHistogram(data, title, id) {
+  histEl.style.display = 'block';
+  let box = document.getElementById(id);
+  if (!box) {
+    box = document.createElement('div');
+    box.id = id; box.className = 'hist-box'; // new plots on top
+    histEl.prepend(box); // new plots on top
+  }
+  box.innerHTML = '';
+
+  const margin = {top: 20, right: 25, bottom: 40, left: 40};
+  const width = box.clientWidth - margin.left - margin.right;
+  const height = box.clientHeight - margin.top - margin.bottom;
+  const svg = d3.select(box).append("svg")
+      .attr("width", width + margin.left + margin.right)
+      .attr("height", height + margin.top + margin.bottom)
+    .append("g")
+      .attr("transform", `translate(${margin.left},${margin.top})`);
+
+  const x = d3.scaleLinear()
+      .domain(d3.extent(data))
+      .range([0, width]);
+
+  const histogram = d3.histogram()
+      .value(d => d)
+      .domain(x.domain())
+      .thresholds(x.ticks(40));
+
+  const bins = histogram(data);
+
+  const y = d3.scaleLinear()
+      .range([height, 0])
+      .domain([0, d3.max(bins, d => d.length)]);
+
+  svg.selectAll("rect")
+      .data(bins)
+      .enter().append("rect")
+        .attr("class", "bar")
+        .attr("x", 1)
+        .attr("transform", d => `translate(${x(d.x0)}, ${y(d.length)})`)
+        .attr("width", d => Math.max(0, x(d.x1) - x(d.x0) - 1))
+        .attr("height", d => height - y(d.length));
+
+  svg.append("g").attr("transform", `translate(0,${height})`).call(d3.axisBottom(x).ticks(5));
+  svg.append("g").call(d3.axisLeft(y).ticks(4));
+  svg.append("text").attr("class", "title").attr("x", width/2).attr("y", -8).text(title);
+}
+function hideHistogram(id) {
+  const box = document.getElementById(id);
+  if (box) box.remove();
+  if (histEl.children.length === 0) {
+    histEl.style.display = 'none';
+  }
+}
+
+// ---------- Heatmap ----------
+// YlOrRd colour ramp anchors (0..1).
+const YLORRD = [
+  [255,255,204],[255,237,160],[254,217,118],[254,178,76],
+  [253,141,60],[252,78,42],[227,26,28],[177,0,38],
+];
+function ramp(t) {
+  t = Math.max(0, Math.min(1, t));
+  const x = t * (YLORRD.length - 1);
+  const i = Math.floor(x), f = x - i;
+  const a = YLORRD[i], b = YLORRD[Math.min(i+1, YLORRD.length-1)];
+  return [ (a[0]+(b[0]-a[0])*f)/255, (a[1]+(b[1]-a[1])*f)/255, (a[2]+(b[2]-a[2])*f)/255 ];
+}
+const baseSurface = new THREE.Color(CFG.surfaceColor);
+function applyHeatmap(sel) {
+  if (sel === 'none') {
+    memMat.vertexColors = false;
+    memMat.color.copy(baseSurface);
+    memMat.needsUpdate = true;
+    document.getElementById('cbMax').textContent = 'max';
+    return;
+  }
+  const counts = new Float32Array(nFaces);
+  const wantAll = (sel === '__all__');
+  const mi = wantAll ? -1 : markerNames.indexOf(sel);
+  for (let i = 0; i < nNodes; i++) {
+    if (wantAll || nodeMarker[i] === mi) counts[nodeFace[i]]++;
+  }
+  // normalise to 95th percentile of positive faces
+  const pos = [];
+  for (let f = 0; f < nFaces; f++) if (counts[f] > 0) pos.push(counts[f]);
+  pos.sort((a,b)=>a-b);
+  const norm = pos.length ? Math.max(1, pos[Math.floor(0.95*(pos.length-1))]) : 1;
+  for (let f = 0; f < nFaces; f++) {
+    const c = ramp(counts[f] / norm);
+    for (let v = 0; v < 3; v++) {
+      memColors[f*9 + v*3 + 0] = c[0];
+      memColors[f*9 + v*3 + 1] = c[1];
+      memColors[f*9 + v*3 + 2] = c[2];
+    }
+  }
+  memGeo.attributes.color.needsUpdate = true;
+  memMat.vertexColors = true;
+  memMat.color.set(0xffffff);
+  memMat.needsUpdate = true;
+  document.getElementById('cbMax').textContent = String(Math.round(norm));
+}
+
+// ---------- UI ----------
+document.getElementById('metaLine').textContent =
+  `${DATA.meta.nNodes.toLocaleString()} nodes · ${DATA.meta.nEdges.toLocaleString()} edges · ${nFaces.toLocaleString()} faces`;
+
+const markerListEl = document.getElementById('markerList');
+function renderMarkerList(filter='') {
+  markerListEl.innerHTML = '';
+  const f = filter.trim().toLowerCase();
+  markerNames.forEach((name, mi) => {
+    if (f && !name.toLowerCase().includes(f)) return;
+    const slot = selected.indexOf(mi);
+    const on = slot >= 0;
+    const full = selected.length >= palette.length && !on;
+    const row = document.createElement('div');
+    row.className = 'mk' + (full ? ' disabled' : '');
+    const cb = document.createElement('input');
+    cb.type = 'checkbox'; cb.checked = on; cb.disabled = full;
+    cb.addEventListener('change', () => toggleMarker(mi));
+    let sw;
+    if (on) {
+      sw = document.createElement('input');
+      sw.type = 'color'; sw.className = 'swatch-color';
+      sw.value = colorOverride[mi] || palette[slot].color;
+      sw.title = 'Change glyph colour';
+      sw.addEventListener('click', (ev) => ev.stopPropagation());
+      sw.addEventListener('input', (ev) => {
+        colorOverride[mi] = ev.target.value;
+        rebuildNodes(); applyNodeOpacity(nodeOpacity); renderLegend();
+      });
+    } else {
+      sw = document.createElement('span');
+      sw.className = 'swatch';
+      sw.style.background = 'transparent';
+      sw.style.border = '1px solid #4a5567';
+    }
+    const tx = document.createElement('span'); tx.textContent = name; tx.style.flex = '1';
+    const ct = document.createElement('small'); ct.textContent = DATA.markerCounts[mi].toLocaleString();
+    row.append(cb, sw, tx, ct);
+    row.addEventListener('click', (ev) => {
+      if (ev.target === cb || ev.target === sw || full) return;
+      toggleMarker(mi);
+    });
+    markerListEl.appendChild(row);
+  });
+}
+function toggleMarker(mi) {
+  const at = selected.indexOf(mi);
+  if (at >= 0) selected.splice(at, 1);
+  else if (selected.length < palette.length) selected.push(mi);
+  rebuildNodes(); applyNodeOpacity(nodeOpacity);
+  renderMarkerList(document.getElementById('markerSearch').value);
+  renderLegend();
+}
+function renderLegend() {
+  const box = document.getElementById('legendBox');
+  const el = document.getElementById('legend');
+  el.innerHTML = '';
+  box.style.display = selected.length ? 'block' : 'none';
+  selected.forEach((mi, slot) => {
+    const pal = palette[slot];
+    const color = colorOverride[mi] || pal.color;
+    const row = document.createElement('div'); row.className = 'mk';
+    const sw = document.createElement('span'); sw.className = 'swatch'; sw.style.background = color;
+    const tx = document.createElement('span'); tx.textContent = markerNames[mi]; tx.style.flex = '1';
+    const sh = document.createElement('small'); sh.textContent = pal.shape;
+    row.append(sw, tx, sh); el.appendChild(row);
+  });
+}
+document.getElementById('markerSearch').addEventListener('input', (e) => renderMarkerList(e.target.value));
+
+// heatmap searchable dropdown (combobox)
+let heatmapSel = 'none';
+const heatmapItems = [['none', 'none'], ['__all__', 'all proteins']]
+  .concat(markerNames.map((n) => [n, n]));
+const hmInput = document.getElementById('heatmapInput');
+const hmMenu = document.getElementById('heatmapMenu');
+function hmLabel(val) { const it = heatmapItems.find((x) => x[0] === val); return it ? it[1] : 'none'; }
+function renderHeatmapMenu(filter='') {
+  hmMenu.innerHTML = '';
+  const f = filter.trim().toLowerCase();
+  heatmapItems.forEach(([val, label]) => {
+    const fixed = (val === 'none' || val === '__all__');
+    if (!fixed && f && !label.toLowerCase().includes(f)) return;
+    const row = document.createElement('div');
+    row.className = 'mk' + (heatmapSel === val ? ' sel' : '');
+    const tx = document.createElement('span'); tx.textContent = label; tx.style.flex = '1';
+    row.append(tx);
+    if (!fixed) {
+      const ct = document.createElement('small');
+      ct.textContent = DATA.markerCounts[markerNames.indexOf(val)].toLocaleString();
+      row.append(ct);
+    }
+    row.addEventListener('mousedown', (ev) => {
+      ev.preventDefault();
+      heatmapSel = val; applyHeatmap(val);
+      hmInput.value = (val === 'none') ? '' : label;
+      hmMenu.classList.remove('open'); hmInput.blur();
+    });
+    hmMenu.appendChild(row);
+  });
+}
+hmInput.addEventListener('focus', () => { hmInput.value = ''; renderHeatmapMenu(''); hmMenu.classList.add('open'); });
+hmInput.addEventListener('input', () => { renderHeatmapMenu(hmInput.value); hmMenu.classList.add('open'); });
+hmInput.addEventListener('blur', () => {
+  setTimeout(() => { hmMenu.classList.remove('open'); hmInput.value = (heatmapSel === 'none') ? '' : hmLabel(heatmapSel); }, 150);
+});
+
+// toggles / sliders
+document.getElementById('tglNodes').addEventListener('change', (e) => { nodeGroup.visible = e.target.checked; });
+const opNodes = document.getElementById('opNodes');
+const opNodesVal = document.getElementById('opNodesVal');
+opNodes.value = 1; opNodesVal.textContent = '1.00';
+opNodes.addEventListener('input', (e) => {
+  const v = parseFloat(e.target.value); applyNodeOpacity(v); opNodesVal.textContent = v.toFixed(2);
+});
+const szNodes = document.getElementById('szNodes');
+const szNodesVal = document.getElementById('szNodesVal');
+szNodes.value = nodeScale; szNodesVal.textContent = nodeScale.toFixed(2);
+szNodes.addEventListener('input', (e) => {
+  nodeScale = parseFloat(e.target.value); szNodesVal.textContent = nodeScale.toFixed(2);
+  rebuildNodes(); applyNodeOpacity(nodeOpacity);
+});
+const szGlyph = document.getElementById('szGlyph');
+const szGlyphVal = document.getElementById('szGlyphVal');
+szGlyph.value = glyphScale; szGlyphVal.textContent = glyphScale.toFixed(1);
+szGlyph.addEventListener('input', (e) => {
+  glyphScale = parseFloat(e.target.value); szGlyphVal.textContent = glyphScale.toFixed(1);
+  rebuildNodes(); applyNodeOpacity(nodeOpacity);
+});
+document.getElementById('tglNodeDegree').addEventListener('change', (e) => {
+  colorByDegree = e.target.checked;
+  rebuildNodes(); applyNodeOpacity(nodeOpacity);
+  if (colorByDegree) drawHistogram(degree, 'Node Connections', 'hist-degree');
+  else hideHistogram('hist-degree');
+});
+document.getElementById('tglOnlySelected').addEventListener('change', (e) => {
+  onlySelected = e.target.checked; rebuildNodes(); applyNodeOpacity(nodeOpacity);
+});
+
+function handleColorModeChange(mode) {
+  applyEdgeColor(mode);
+  if (mode === 'length') {
+    drawHistogram(edgeLen, 'Edge Length', 'hist-length');
+  } else {
+    hideHistogram('hist-length');
+  }
+}
+
+document.getElementById('tglMembrane').addEventListener('change', (e) => { membrane.visible = e.target.checked; });
+const opMem = document.getElementById('opMembrane');
+const opMemVal = document.getElementById('opMembraneVal');
+opMem.value = CFG.surfaceOpacity;
+opMemVal.textContent = Number(CFG.surfaceOpacity).toFixed(2);
+opMem.addEventListener('input', (e) => {
+  memMat.opacity = parseFloat(e.target.value);
+  opMemVal.textContent = memMat.opacity.toFixed(2);
+});
+const memColor = document.getElementById('memColor');
+memColor.value = CFG.surfaceColor;
+memColor.addEventListener('input', (e) => {
+  baseSurface.set(e.target.value);
+  if (heatmapSel === 'none') { memMat.color.copy(baseSurface); memMat.needsUpdate = true; }
+});
+const tglEdges = document.getElementById('tglEdges');
+const opEdges = document.getElementById('opEdges');
+const opEdgesVal = document.getElementById('opEdgesVal');
+opEdges.value = 0.35; opEdgesVal.textContent = '0.35';
+tglEdges.addEventListener('change', (e) => { if (lineSeg) lineSeg.visible = e.target.checked; });
+opEdges.addEventListener('input', (e) => {
+  if (lineSeg) lineSeg.material.opacity = parseFloat(e.target.value);
+  opEdgesVal.textContent = parseFloat(e.target.value).toFixed(2);
+});
+document.getElementById('edgeColor').addEventListener('change', (e) => handleColorModeChange(e.target.value));
+document.getElementById('resetView').addEventListener('click', () => {
+  camera.position.copy(CAM0); controls.target.set(0,0,0); controls.update();
+});
+controls.autoRotateSpeed = 2.0;
+document.getElementById('tglAutoRotate').addEventListener('change', (e) => { controls.autoRotate = e.target.checked; });
+
+// ---------- Init ----------
+rebuildNodes();
+buildEdges();
+renderMarkerList();
+applyHeatmap('none');
+document.getElementById('loader').style.display = 'none';
+
+window.addEventListener('resize', () => {
+  camera.aspect = window.innerWidth/window.innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(window.innerWidth, window.innerHeight);
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  controls.update();
+  renderer.render(scene, camera);
+}
+  animate();
+}
+main();
+</script>
+</body>
+</html>
