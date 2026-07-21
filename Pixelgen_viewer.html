@@ -13,7 +13,8 @@
     position: fixed; top: 12px; left: 12px; width: 268px; max-height: calc(100% - 24px);
     overflow-y: auto; background: rgba(20,24,32,0.92); color: #e6e9ef;
     border: 1px solid #333b48; border-radius: 10px; padding: 12px 14px;
-    font-size: 13px; box-shadow: 0 6px 22px rgba(0,0,0,0.45); backdrop-filter: blur(4px);
+    font-size: 13px; box-shadow: 0 6px 22px rgba(0,0,0,0.45); backdrop-filter: blur(4px);;
+    transition: transform 0.3s ease-out; z-index: 20;
   }
   #panel h1 { font-size: 14px; margin: 0 0 2px; }
   #panel .sub { color: #9aa4b2; font-size: 11px; margin-bottom: 10px; }
@@ -57,9 +58,9 @@
   .combo-menu.open { display: block; }
   .combo-menu .mk { padding: 4px 8px; }
   #legendBox { position: fixed; right: 12px; bottom: 12px; min-width: 140px;
-    background: rgba(20,24,32,0.92); color: #e6e9ef; border: 1px solid #333b48; border-radius: 10px;
+    background: rgba(20,24,32,0.92); color: #e6e9ef; border: 1px solid #333b48; border-radius: 10px; bottom: auto;
     padding: 10px 12px; font-size: 13px; box-shadow: 0 6px 22px rgba(0,0,0,0.45);
-    backdrop-filter: blur(4px); display: none; }
+    backdrop-filter: blur(4px); display: none; top: 12px;}
   #legendBox .lhead { font-weight: 600; margin-bottom: 6px; font-size: 12px; }
   #legendBox .mk { cursor: default; }
   #loader { position: fixed; inset: 0; background: #12151b; z-index: 100; display: flex;
@@ -78,6 +79,21 @@
   .hist-box .axis text { fill: #9aa4b2; font-size: 10px; }
   .hist-box .axis path, .hist-box .axis line { stroke: #333b48; }
   .hist-box .title { fill: #e6e9ef; font-size: 12px; text-anchor: middle; }
+  #menuToggle {
+    position: fixed; top: 12px; left: 12px; z-index: 21;
+    width: 40px; height: 40px; background: rgba(20,24,32,0.92);
+    border: 1px solid #333b48; border-radius: 10px; cursor: pointer;
+    display: flex; align-items: center; justify-content: center;
+    box-shadow: 0 6px 22px rgba(0,0,0,0.45); backdrop-filter: blur(4px);
+  }
+  #menuToggle span, #menuToggle span:before, #menuToggle span:after {
+    display: block; background: #e6e9ef; height: 2px; width: 20px; border-radius: 1px;
+  }
+  #menuToggle span:before, #menuToggle span:after { content: ''; position: absolute; }
+  #menuToggle span:before { transform: translateY(-6px); }
+  #menuToggle span:after { transform: translateY(6px); }
+  #panel:not(.collapsed) { transform: translateX(52px); }
+  #panel.collapsed { transform: translateX(calc(-100% - 20px)); }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/pako@2.1.0/dist/pako.min.js"></script>
 <script src="https://d3js.org/d3.v7.min.js"></script>
@@ -153,6 +169,9 @@
   </div>
 </div>
 <div id="hint">Drag to rotate · scroll to zoom · right-drag to pan</div>
+<div id="menuToggle" title="Toggle menu">
+  <span></span>
+</div>
 <div id="legendBox"><div class="lhead">Selected markers</div><div id="legend"></div></div>
 <div id="histogram"></div>
 
@@ -420,7 +439,7 @@ function drawHistogram(data, title, id) {
   }
   box.innerHTML = '';
 
-  const margin = {top: 20, right: 25, bottom: 40, left: 40};
+  const margin = {top: 20, right: 15, bottom: 20, left: 40};
   const width = box.clientWidth - margin.left - margin.right;
   const height = box.clientHeight - margin.top - margin.bottom;
   const svg = d3.select(box).append("svg")
@@ -691,6 +710,15 @@ document.getElementById('resetView').addEventListener('click', () => {
 });
 controls.autoRotateSpeed = 2.0;
 document.getElementById('tglAutoRotate').addEventListener('change', (e) => { controls.autoRotate = e.target.checked; });
+const panel = document.getElementById('panel');
+if (window.innerWidth <= 1200) {
+  panel.classList.add('collapsed');
+}
+document.getElementById('menuToggle').addEventListener('click', () => {
+  panel.classList.toggle('collapsed');
+  // after animation, tell d3/three to resize in case window size changed while hidden
+  setTimeout(() => window.dispatchEvent(new Event('resize')), 350);
+});
 
 // ---------- Init ----------
 rebuildNodes();
